@@ -1,4 +1,4 @@
-Infinispan dlm
+Infinispan-dlm
 --------------
 
 This is a simple DLM (Distributed Lock Manager) on top of Infinispan. It can be used to coordinate access to resources 
