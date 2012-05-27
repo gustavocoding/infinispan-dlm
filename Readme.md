@@ -17,7 +17,7 @@ like avoiding two process running at the same time in different machines
         boolean lockAcquired = distributedLock.acquire();
         
         if(lockAcquired) {
-            // Do some task
+            // Start some processing
         }
         
         distributedLock.release();
