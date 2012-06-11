@@ -2,14 +2,18 @@ package com.gustavonale.infinispan.dlm;
 
 import org.infinispan.AdvancedCache;
 import org.infinispan.notifications.Listener;
+import org.infinispan.notifications.cachemanagerlistener.annotation.Merged;
 import org.infinispan.notifications.cachemanagerlistener.annotation.ViewChanged;
+import org.infinispan.notifications.cachemanagerlistener.event.MergeEvent;
 import org.infinispan.notifications.cachemanagerlistener.event.ViewChangedEvent;
 import org.infinispan.remoting.transport.Address;
+import org.jgroups.MergeView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A DLM (Distributed Lock Manager) on top of Infinispan.
@@ -21,6 +25,8 @@ import java.util.List;
 public final class InfinispanDistributedLock implements DistributedLock {
 
     Logger logger = LoggerFactory.getLogger(InfinispanDistributedLock.class);
+
+    private volatile int viewSize = 0;
 
     /**
      * The replicated cache that holds the lock
@@ -54,13 +60,20 @@ public final class InfinispanDistributedLock implements DistributedLock {
      * @param viewChangedEvent The topology changes
      */
     @ViewChanged
-    public void memberLeft(ViewChangedEvent viewChangedEvent) {
-        logger.info("Membership changed");
+    public void viewChanged(ViewChangedEvent viewChangedEvent) {
+        viewSize = viewChangedEvent.getNewMembers().size();
+        logger.info("Membership changed. New cluster size is " + viewSize);
         List<Address> leftMembers = minus(viewChangedEvent.getNewMembers(), viewChangedEvent.getOldMembers());
         for (Address member : leftMembers) {
             logger.info("Member {} left the cluster", member);
             cache.removeAsync(LOCK_KEY, member.toString());
         }
+    }
+
+    @Merged
+    public void merged(MergeEvent mergeEvent)   {
+        cache.removeAsync(LOCK_KEY);
+
     }
 
     private List<Address> minus(List<Address> original, List<Address> another) {
@@ -76,6 +89,9 @@ public final class InfinispanDistributedLock implements DistributedLock {
 
     @Override
     public boolean acquire() {
+        if(isAcquired()) {
+            return true;
+        }
         String address = getAddress();
         Object previous = cache.putIfAbsent(LOCK_KEY, address);
         if (previous == null) {
